@@ -922,3 +922,28 @@ mod tests {
         assert!(encoded.contains(&expected));
     }
 }
+
+/// Builds a RISC Zero guest program and sets up environment variables for use in the host.
+pub fn build_program(guest_path: &str) {
+    // Resolve the guest path and track it for rebuilds if it changes.
+    let guest_path = std::fs::canonicalize(guest_path)
+        .expect("Failed to canonicalize guest path");
+    println!("cargo:rerun-if-changed={}", guest_path.display());
+
+    let guest_pkg = get_package(&guest_path);
+    let target_dir = get_out_dir().join(&guest_pkg.name);
+    let guest_info = GuestInfo {
+        options: Default::default(),
+        metadata: (&guest_pkg).into(),
+    };
+    let profile = if is_debug() { "debug" } else { "release" };
+
+    build_guest_package(&guest_pkg, &target_dir, &guest_info);
+    let guests: Vec<GuestListEntry> = guest_methods(&guest_pkg, &target_dir, &guest_info, profile);
+
+    // Export ELF paths and image IDs as environment variables
+    for guest in guests {
+        println!("cargo:rustc-env=R0_ELF_{}={}", guest.name, guest.path);
+        println!("cargo:rustc-env=R0_ID_{}={}", guest.name, guest.image_id);
+    }
+}
